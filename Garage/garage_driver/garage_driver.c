@@ -32,65 +32,66 @@ module_exit(garage_driver_exit);
 /* Major number. */
 int garage_driver_major;
 
-int check;
+int Gflag = 0;
+int Rflag = 0;
 
 
 /* Buffer to store data. */
 #define BUF_LEN 80
 static char garage_driver_buffer[BUF_LEN];
-static char state_buffer[BUF_LEN];
 
 /* HRtimer vars. */
 
-static struct hrtimer signal_timer;
+static struct hrtimer timer_green;
+static struct hrtimer timer_red;
 
-static ktime_t rising_edge;
-static ktime_t falling_edge;
+static ktime_t green;
+static ktime_t red;
+
 
 #define MS_TO_NS(x) ((x) * 1E6L)
-#define TIMER_SEC  15
-#define TIMER_NANO_SEC  0
-#define STOP_SEC 5
-#define STOP_NANO_SEC 0
-
-/* IRQ number. */
-static int irq_gpio25 = -1;
-static int irq_gpio26 = -1;
+#define BLINK_SEC 0
+#define BLINK_NANO_SEC 1000*1000*250
 
 
-
-static irqreturn_t obstacleIrq(int irq, void *data)  // GPIO_25 interrupt obstacle DETECTED
+static enum hrtimer_restart blink_green(struct hrtimer *param)
 {
-    check = strcmp(state_buffer,"Closing");
-    if(check == 0)
+    if(Gflag == 0)
     {
-        SetGpioPin(GPIO_24);   //  SEND TO ARDUINO  GPIO_24
-        strcpy(state_buffer, "Obstacle");
-        ClearGpioPin(GPIO_24);
+        SetGpioPin(GPIO_26);
+        Gflag = 1;
+
     }
-    return IRQ_HANDLED;
+    else if(Gflag == 1)
+    {
+        ClearGpioPin(GPIO_26);
+        Gflag = 0;
+    }
+
+    hrtimer_forward(&timer_green, ktime_get(), green);
+
+    return HRTIMER_RESTART;
 }
 
-static irqreturn_t stateIrq(int irq, void *data)
+static enum hrtimer_restart blink_red(struct hrtimer *param)
 {
-    if(GetGpioPinValue(GPIO_26))
+    if(Rflag == 0)
     {
-        rising_edge = ktime_get();
+        SetGpioPin(GPIO_16);
+        Rflag = 1;
+
     }
-    else
+    else if(Rflag == 1)
     {
-        falling_edge = ktime_get();
+        ClearGpioPin(GPIO_16);
+        Rflag = 0;
     }
+
+    hrtimer_forward(&timer_red, ktime_get(), red);
+
+    return HRTIMER_RESTART;
 }
 
-
-/*static enum hrtimer_restart signal_callback(struct hrtimer *param)
-{
-
-    return HRTIMER_NORESTART;
-}
-
-*/
 /*
  * Initialization:
  *  1. Register device driver
@@ -114,70 +115,26 @@ int garage_driver_init(void)
 
     /* Initialize data buffer. */
     memset(garage_driver_buffer, 0, BUF_LEN);
-    memset(state_buffer,0,BUF_LEN);
-    //**************************//
-
 
     printk(KERN_INFO "Inserting garage_driver module\n");
 
     /* Initialize high resolution timer. */
 
-    /*hrtimer_init(&signal_timer, CLOCK_MONOTONIC, HRTIMER_MODE_REL);
-    rising_edge = ktime_set(TIMER_SEC, TIMER_NANO_SEC);
-    falling_edge = ktime_set(STOP_SEC,STOP_NANO_SEC);
-    garage_timer.function = &garage_timer_callback;
-    */
-    /**************************************************/
-    /************ Initialize GPIO pins. ***************/
-    /**************************************************/
+    hrtimer_init(&timer_green, CLOCK_MONOTONIC, HRTIMER_MODE_REL);
+    green = ktime_set(BLINK_SEC, BLINK_NANO_SEC);
+    timer_green.function = &blink_green;
+    hrtimer_start(&timer_green, green, HRTIMER_MODE_REL);
 
-    /************* OPEN, CLOSE, STOP ************/
+    hrtimer_init(&timer_red, CLOCK_MONOTONIC, HRTIMER_MODE_REL);
+    red = ktime_set(BLINK_SEC, BLINK_NANO_SEC);
+    timer_red.function = &blink_red;
+    hrtimer_start(&timer_red, red, HRTIMER_MODE_REL);
 
-    // 1 0 - OPEN
-    // 0 1 - CLOSE
-    // 1 1 - STOP.
+    SetInternalPullUpDown(GPIO_26,PULL_DOWN);
+    SetGpioPinDirection(GPIO_26,GPIO_DIRECTION_OUT);
 
-    SetGpioPinDirection(GPIO_22, GPIO_DIRECTION_OUT);
-    SetGpioPinDirection(GPIO_23, GPIO_DIRECTION_OUT);
-
-    /********** OBSTACLE DETECTED ******/
-
-    SetGpioPinDirection(GPIO_24, GPIO_DIRECTION_OUT);
-
-    /********** Initialization pin ******/
-
-    SetGpioPinDirection(GPIO_27, GPIO_DIRECTION_OUT);
-
-
-    /* Initialize gpio 25 ISR. OBSTACLE */
-
-    /************ O B S T A C L E *************/
-
-    gpio_request_one(GPIO_25, GPIOF_IN, "irq_gpio25");
-    irq_gpio25 = gpio_to_irq(GPIO_25);
-    if(request_irq(irq_gpio25, obstacleIrq, IRQF_TRIGGER_RISING , "irq_gpio25", (void *)(obstacleIrq)) != 0)
-    {
-        printk("Error: obstacle ISR not registered!\n");
-    }
-
-    /* Initialize gpio 26 ISR.*/
-
-    /**************** S T A T E *************/
-
-    gpio_request_one(GPIO_26, GPIOF_IN, "irq_gpio26");
-    irq_gpio26 = gpio_to_irq(GPIO_26);
-    if(request_irq(irq_gpio26, stateIrq, IRQF_TRIGGER_RISING | IRQF_TRIGGER_FALLING, "irq_gpio26", (void *)(stateIrq)) != 0)
-    {
-        printk("Error: state ISR not registered!\n");
-    }
-
-    /**************** Initialization *************/
-
-    strcpy(state_buffer,"Closed");  // Garage initial state
-    SetGpioPin(GPIO_27); // SEND to ARDUINO
-    ClearGpioPin(GPIO_27);
-
-    /*********************************************/
+    SetInternalPullUpDown(GPIO_16,PULL_DOWN);
+    SetGpioPinDirection(GPIO_16,GPIO_DIRECTION_OUT);
 
 
     return 0;
@@ -195,22 +152,16 @@ void garage_driver_exit(void)
 
     printk(KERN_INFO "Removing garage_driver module\n");
 
-    /* Release IRQ nad handler. */
-    disable_irq(irq_gpio25);
-    free_irq(irq_gpio25, obstacleIrq);
-    gpio_free(GPIO_25);
+    hrtimer_cancel(&timer_green);
+    hrtimer_cancel(&timer_red);
 
-    disable_irq(irq_gpio26);
-    free_irq(irq_gpio26, stateIrq);
-    gpio_free(GPIO_26);
+    SetInternalPullUpDown(GPIO_16,PULL_NONE);
+    SetInternalPullUpDown(GPIO_26,PULL_NONE);
 
-    //hrtimer_cancel(&garage_timer);
+    ClearGpioPin(GPIO_26);
+    ClearGpioPin(GPIO_16);
 
-    /* Clear GPIO pins. */
-    ClearGpioPin(GPIO_22);
-    ClearGpioPin(GPIO_23);
-    ClearGpioPin(GPIO_24);
-    ClearGpioPin(GPIO_27);
+}
 
 
 /* File open function. */
@@ -251,12 +202,10 @@ static ssize_t garage_driver_read(struct file *filp, char *buf, size_t len, loff
     if (*f_pos == 0)
     {
         /* Get size of valid data. */
-        data_size = strlen(state_buffer);
-        printk("Vreme %d\n",rising_edge - falling_edge);
-
+        data_size = strlen(garage_driver_buffer);
 
         /* Send data to user space. */
-        if (copy_to_user(buf, state_buffer, data_size) != 0)
+        if (copy_to_user(buf, garage_driver_buffer, data_size) != 0)
         {
             return -EFAULT;
         }
@@ -295,32 +244,7 @@ static ssize_t garage_driver_write(struct file *filp, const char *buf, size_t le
     }
 	else
 	{
-		garage_driver_buffer[len] = '\0';
-
-		check = strcmp(garage_driver_buffer,"Open");
-		if(check == 0)
-		{
-            SetGpioPin(GPIO_22);
-            ClearGpioPin(GPIO_23);
-			strcpy(state_buffer,"Opening");
-		}
-
-		check = strcmp(garage_driver_buffer,"Close");
-		if(check == 0)
-		{
-            ClearGpioPin(GPIO_22);
-            SetGpioPin(GPIO_23);
-			strcpy(state_buffer,"Closing");
-		}
-
-		check = strcmp(garage_driver_buffer,"Stop");
-		if(check == 0)
-		{
-			SetGpioPin(GPIO_22);
-            SetGpioPin(GPIO_23);
-		}
-
-	    return len;
-	}
+        return len;
+    }
 
 }

@@ -1,1 +1,1 @@
-cmd_/home/pi/Desktop/Gotovo/garage_driver/garage_driver.ko := ld -EL -r  -T ./scripts/module-common.lds --build-id  -o /home/pi/Desktop/Gotovo/garage_driver/garage_driver.ko /home/pi/Desktop/Gotovo/garage_driver/garage_driver.o /home/pi/Desktop/Gotovo/garage_driver/garage_driver.mod.o
+cmd_/home/pi/SPPURV2/Garage/garage_driver/garage_driver.ko := ld -EL -r  -T ./scripts/module-common.lds --build-id  -o /home/pi/SPPURV2/Garage/garage_driver/garage_driver.ko /home/pi/SPPURV2/Garage/garage_driver/garage_driver.o /home/pi/SPPURV2/Garage/garage_driver/garage_driver.mod.o

@@ -1,2 +1,2 @@
-/home/pi/Desktop/Gotovo/garage_driver/garage_driver.ko
-/home/pi/Desktop/Gotovo/garage_driver/garage_driver.o
+/home/pi/SPPURV2/Garage/garage_driver/garage_driver.ko
+/home/pi/SPPURV2/Garage/garage_driver/garage_driver.o
