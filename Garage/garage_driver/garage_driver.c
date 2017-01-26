@@ -53,18 +53,20 @@ static ktime_t red;
 #define BLINK_SEC 0
 #define BLINK_NANO_SEC 1000*1000*250
 
-
 static enum hrtimer_restart blink_green(struct hrtimer *param)
 {
+    char led_pin = (m > n) ? GPIO_16 : /* true */
+                             (m > 5) ? GPIO_26 : GPIO_5;
+
     if(Gflag == 0)
     {
-        SetGpioPin(GPIO_26);
+        SetGpioPin(led_pin);
         Gflag = 1;
 
     }
     else if(Gflag == 1)
     {
-        ClearGpioPin(GPIO_26);
+        ClearGpioPin(led_pin);
         Gflag = 0;
     }
 
@@ -130,11 +132,32 @@ int garage_driver_init(void)
     timer_red.function = &blink_red;
     hrtimer_start(&timer_red, red, HRTIMER_MODE_REL);
 
+    /****************************************//
+
+    // LED PINS
     SetInternalPullUpDown(GPIO_26,PULL_DOWN);
     SetGpioPinDirection(GPIO_26,GPIO_DIRECTION_OUT);
 
     SetInternalPullUpDown(GPIO_16,PULL_DOWN);
     SetGpioPinDirection(GPIO_16,GPIO_DIRECTION_OUT);
+    //MOTOR pins
+    SetGpioPinDirection(GPIO_12,GPIO_DIRECTION_OUT);
+    SetGpioPinDirection(GPIO_13,GPIO_DIRECTION_OUT);
+    //INTERRUPT pins
+    SetGpioPinDirection(GPIO_05,GPIO_DIRECTION_IN); // Obstacle
+    SetGpioPinDirection(GPIO_06,GPIO_DIRECTION_IN); // Opened Button
+    SetGpioPinDirection(GPIO_24,GPIO_DIRECTION_IN);
+
+    gpio_request_one(GPIO_05, GPIOF_IN, "Obstacle");
+    irq_gpio3 = gpio_to_irq(GPIO_03);
+    if(request_irq(irq_gpio3, h_irq_gpio3,
+      IRQF_TRIGGER_FALLING, "irq_gpio3", (void *)(h_irq_gpio3))) != 0)
+    {
+        printk("Error: ISR not registered!\n");
+    }
+
+
+
 
 
     return 0;
@@ -198,11 +221,19 @@ static ssize_t garage_driver_read(struct file *filp, char *buf, size_t len, loff
 {
     /* Size of valid data in gpio_driver - data to send in user space. */
     int data_size = 0;
-
     if (*f_pos == 0)
     {
         /* Get size of valid data. */
         data_size = strlen(garage_driver_buffer);
+
+        /*char c = 5;
+        garage_drive_buffer[0] = c;
+        copy_to_user(buf, garage_driver_buffer, sizeof(c));*/
+
+        int i = 5;
+        int* pi_garage_drive_buffer = (int*)garage_drive_buffer;
+        pi_garage_drive_buffer[0] = i;
+        copy_to_user(buf, garage_driver_buffer, sizeof(c));
 
         /* Send data to user space. */
         if (copy_to_user(buf, garage_driver_buffer, data_size) != 0)
